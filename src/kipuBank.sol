@@ -1,22 +1,18 @@
 //SPDX-License-Identifier: MIT
-pragma solidity >0.8.0;
+pragma solidity >0.5.8;
 
 import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-//import {Ioracle} from "Ioracle.sol";
-//import {oracle} from "oracle.sol";
-//import {AggregatorV3Interface} from "@chainlink/contracts/src/v0.8/shared/interfaces/AggregatorV3Interface.sol";
+import {AggregatorV3Interface} from "@chainlink/contracts/src/v0.8/shared/interfaces/AggregatorV3Interface.sol";
+import {ReentrancyGuard} from "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 
 
 
 
 
-interface Ioracle {
-        function latestAnswer() external view returns(int256);
-    }
      
-	 contract kipuBank is  AccessControl {
+	 contract KipuBank is  AccessControl {
 
 	/*///////////////////////
 					Variables
@@ -28,7 +24,7 @@ interface Ioracle {
 	///@notice variable Inmutable para almacenar el limite global de deposito
 	uint256 immutable i_bankCap;
 	///@notice variable constante para almacenar el factor de decimales
-    uint256 constant DECIMAL_FACTOR = 10e6;
+    uint256 constant DECIMAL_FACTOR = 10**6;
 	///@notice variable constante que almacena rol
     bytes32 public constant MY_ROLE = keccak256("MY_ROLE");
     ///@notice variable constante que almacena rol
@@ -42,15 +38,15 @@ interface Ioracle {
 	uint256 public s_oper_ext_total;
     
 	///@notice variable para almacenar la dirección del Chainlink Feed
-    //AggregatorV3Interface public  s_feeds; //0x694AA1769357215DE4FAC081bf1f309aDC325306 Ethereum ETH/USD
-	//variable que almacena el precio de la moneda 0x694AA1769357215DE4FAC081bf1f309aDC325306
-	//uint256 public price = chainlinkFeed();
-	uint256 public price = uint256(latestAnswer()); //devuelve el precio;
-	//variable que almacena el precio de la moneda 0x694AA1769357215DE4FAC081bf1f309aDC325306
+    AggregatorV3Interface public  s_feeds;// = AggregatorV3Interface(0x694AA1769357215DE4FAC081bf1f309aDC325306);// Ethereum ETH/USD
+	//variable que almacena el precio de la moneda  0x5C022E645Dbae6Fb9cF079698F787D5d1C098cA7
+	//uint256 public price = chainlinkFeed();      0x5C022E645Dbae6Fb9cF079698F787D5d1C098cA7                                            
+	
+	//variable que almacena el precio de la moneda 
 	//IOracle public oracle;
-     
+    //s_feeds = AggregatorV3Interface(_feed); //address  _feed 
 	///@notice variable constante para almacenar el latido (heartbeat) del Data Feed
-    //uint16 constant ORACLE_HEARTBEAT = 3800;
+    uint16 constant ORACLE_HEARTBEAT = 3600;
     
 	IERC20 immutable public USDC;
 	IERC20 immutable public USD;
@@ -101,7 +97,7 @@ interface Ioracle {
     //////////////////////*/
 	///@notice modificador para validar el beneficiario
 	modifier MontoInvalido() {
-		if(msg.value > i_bankCap){
+		if(msg.value > i_bankCap || msg.value <= 0){
 			revert KipubanK_MontoInvalido("Monto Invalido");
 		}
 		_;
@@ -111,13 +107,21 @@ interface Ioracle {
 	/*///////////////////////
 					Functions
 	///////////////////////*/
-	constructor(uint256 _limite, IERC20 _usdc )	{
+	/**
+	* @notice costrucor del contrato
+    * @param _limite Límite global de depósitos en el banco (en wei).
+	* @param _usdc address de USDC
+	* @param _feed address de oraculo chainlink eth
+    * @dev i_extMax se fija en 10 ETH (10*10^18 wei) como máximo por extracción.
+    */
+	constructor(uint256 _limite, IERC20 _usdc,  address  _feed )	{
+		i_owner = msg.sender;
 		_grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
 		i_bankCap = _limite;
 		i_extMax = 10*10e18;
 		USDC = _usdc; 
-		//s_feeds = AggregatorV3Interface(_feed);
-		//Ioracle oracle = _oracle;Ioracle _oracle
+		s_feeds =  AggregatorV3Interface(_feed); 
+		
 		
 
 	}
@@ -127,15 +131,14 @@ interface Ioracle {
 		*@dev esta funcion debe sumar el valor depositado a s_depositos
 		*@dev esta funcion precisas emitir el evento KipubanK_Deposito.
 	*/
-	function depositEth() external payable MontoInvalido{
+	function deposit() external payable  MontoInvalido{
+		if(getMyBalance() + msg.value >=i_bankCap) revert KipubanK_MontoInvalido("Capacidad Maxima del Banco");
+		s_depositos[msg.sender] = s_depositos[msg.sender] + msg.value;
+		s_cuentas[msg.sender].eth = s_cuentas[msg.sender].eth + msg.value;
+		s_cuentas[msg.sender].totalUsd = s_cuentas[msg.sender].totalUsd + convertEthWToUsdc(s_cuentas[msg.sender].eth);
 		emit kipubank_Deposito(msg.sender, msg.value);
-          if(getMyBalance()>=i_bankCap) revert KipubanK_MontoInvalido("Capacidad Maxima del Banco");
-		  s_depositos[msg.sender] = s_depositos[msg.sender] + msg.value;
-		  s_cuentas[msg.sender].eth = s_cuentas[msg.sender].eth + msg.value;
-		  s_cuentas[msg.sender].totalUsd = convertEthWToUsdc(s_cuentas[msg.sender].eth);
-		  	unchecked{
 		++s_oper_depo_total;
-		}
+		
 	}
     /*
 		*@notice funcion para realizar depositos usdc
@@ -149,9 +152,10 @@ interface Ioracle {
           if(getMyBalance()>=i_bankCap) revert KipubanK_MontoInvalido("Capacidad Maxima del Banco");
 		  s_cuentas[msg.sender].usdc = s_cuentas[msg.sender].usdc + _usdcAmount;
 		  s_cuentas[msg.sender].totalUsd = s_cuentas[msg.sender].totalUsd + _usdcAmount ;//* 10e5);
-		  	unchecked{
-		++s_oper_depo_total;
-		}
+		  s_depositos[msg.sender] += _usdcAmount;
+		  //s_cuentas[msg.sender].totalUsd += convertEthWToUsdc(msg.value);
+		  ++s_oper_depo_total;
+	
 	}
 	
 	/*
@@ -160,17 +164,16 @@ interface Ioracle {
 		*@dev solo el titualr de la cuenta puede realizar la extraccion debe tener el Role USERS
 		*@param _monto valor a ser extraido
 	*/
-	function extraccionEth(uint256 _monto) external payable onlyRole(USERS){
+	function extraccionEth(uint256 _monto) external payable  onlyRole(USERS){
 		if(_monto > i_extMax) revert  KipubanK_MontoMaxExcedido();
 		if(_monto > s_depositos[msg.sender]) revert KipubanK_MontoInvalido("saldo Insuficiente");
-         emit kipubank_ExtraccionHecha(msg.sender, _monto);
-		 _transferirEth(_monto);
-		  s_depositos[msg.sender] = s_depositos[msg.sender] - _monto;
+          s_depositos[msg.sender] = s_depositos[msg.sender] - _monto;
 		  s_cuentas[msg.sender].eth = s_cuentas[msg.sender].eth - _monto;
-		  s_cuentas[msg.sender].totalUsd = convertEthWToUsdc(s_cuentas[msg.sender].totalUsd - (_monto));
-		  unchecked{
-		++s_oper_ext_total;
-		}
+		  s_cuentas[msg.sender].totalUsd = s_cuentas[msg.sender].totalUsd -convertEthWToUsdc(_monto);
+		  emit kipubank_ExtraccionHecha(msg.sender, _monto);
+		  ++s_oper_ext_total;
+		  _transferirEth(_monto);
+		
 	}
 	/*
 		*@notice funcion para realizar Extracciones en USDC
@@ -178,15 +181,16 @@ interface Ioracle {
 		*@dev solo el titualr de la cuenta puede realizar la extraccion debe tener el Role USERS
 		*@param _monto valor a ser extraido
 	*/
-	function extraccionUsdc(uint256 _monto) external payable onlyRole(USERS){
+	function extraccionUsdc(uint256 _monto) external onlyRole(USERS){
 		if (_monto > s_cuentas[msg.sender].usdc) revert KipubanK_MontoInvalido("saldo Insuficiente");
+		if(_monto > i_extMax) revert  KipubanK_MontoMaxExcedido();
 		emit kipubank_ExtraccionHecha(msg.sender, _monto);
 		s_cuentas[msg.sender].usdc = s_cuentas[msg.sender].usdc - _monto;
 		s_cuentas[msg.sender].totalUsd = s_cuentas[msg.sender].totalUsd - (_monto);
+		s_depositos[msg.sender] = s_depositos[msg.sender] - _monto;
 		USDC.transfer(msg.sender, _monto);
-		unchecked{
 		++s_oper_ext_total;
-		}
+		
 	}
 	
 	/*
@@ -205,46 +209,63 @@ interface Ioracle {
    function getMyBalance() public view onlyRole(MY_ROLE)returns (uint256) {
         return address(this).balance;
    }
+    /**
+ * @notice Convierte un amount de ETH a USDC usando el precio de Chainlink.
+ * @param _ethAmount Cantidad de ETH (en wei, 18 decimales).
+ * @return Amount en USDC (6 decimales).
+ */
+function convertEthWToUsdc(uint256 _ethAmount) public view  returns (uint256) {
+    uint256 ethUSDPrice = 380000000000;  //chainlinkFeed(); 380000000000 HArcode porque chainlink no funka// Precio en 8 decimales (ej: 2000 * 1e8) ;
+    // Fórmula: (ETH * precio) / 10^(18 + 8 - 6) = (ETH * precio) / 1e20
+    //s_cuentas[msg.sender].totalUsd += convertEthWToUsdc(msg.value);
+	uint256 usdcAmount = (_ethAmount * ethUSDPrice) / 1e20;
+	return usdcAmount;
+	
+	
+}
+ /**
+ * @notice Función para consultar el precio en USD del ETH usando Chainlink.
+ * @return ethUSDPrice_ Precio de ETH en USD (con 8 decimales, como Chainlink).
+ * @dev Reverte si el precio es 0 (oráculo comprometido) o está desactualizado.
+ */
+function chainlinkFeed() internal view returns (uint256 ethUSDPrice_) {
+    (, int256 ethUSDPrice, , uint256 updatedAt, ) = s_feeds.latestRoundData();
+
+    // Validaciones críticas
+    if (ethUSDPrice <= 0) revert KipuBank_OracleCompromised();  // Precio <= 0 es inválido
+    if (block.timestamp - updatedAt > ORACLE_HEARTBEAT) revert KipuBank_StalePrice();  // Datos antiguos
+
+    // Convierte de int256 a uint256 (seguro porque ya validamos que ethUSDPrice > 0)
+     return ethUSDPrice_ = uint256(ethUSDPrice);
+} 
+
     /*
      * @notice función para consultar el precio en USD del ETH 
      * @return ethUSDPrice_ el precio provisto por el oráculo.
      * @dev esta es una implementación simplificada.
-     *
-   function chainlinkFeed() internal   view returns (uint256 ethUSDPrice_) {
-        (, int256 ethUSDPrice,, uint256 updatedAt,) = s_feeds.latestRoundData();
+     */
+   //function chainlinkFeed() internal   view returns (uint256 ethUSDPrice_) {
+    //    (, int256 ethUSDPrice,, uint256 updatedAt,) = s_feeds.latestRoundData();
 
-        if (ethUSDPrice == 0) revert KipuBank_OracleCompromised();
-        if (block.timestamp - updatedAt > ORACLE_HEARTBEAT) revert KipuBank_StalePrice();
+      //  if (ethUSDPrice == 0) revert KipuBank_OracleCompromised();
+        //if (block.timestamp - updatedAt > ORACLE_HEARTBEAT) revert KipuBank_StalePrice();
 
-        ethUSDPrice_ = uint256(ethUSDPrice);
-    }
-    */
-
-     function latestAnswer() internal  pure returns(int256){
-            return 3900;
-	 }
-	/*@notice funcion que toma el precio de eth en usd de un oraculo
-	 *return _latestAnswer
-	 */
+   //     ethUSDPrice_ = uint256(ethUSDPrice);
+    //}
     
+
     
-	  /*@notice funcion para cambiar el oraculo
-	 *@param addres _feed
-	 */
-	// function setOracle(address _feed) public onlyRole(MY_ROLE){
-	//	oracle = IOracle(_feed);
-	// }
 
 	/*
      * @notice función interna para realizar la conversión de decimales de ETH a USDC
      * @param _mont la cantidad de ETH a ser convertida
      * @return usdc_ el resultado del cálculo.
-     */
+     *
 	function convertEthWToUsdc(uint256  _monto) public view onlyRole(USERS)	returns(uint256) {
-		uint256 usdc_ = ((_monto * DECIMAL_FACTOR) * price);
-		usdc_ = usdc_ / 10e18;
+		uint256 usdc_ = ((_monto * DECIMAL_FACTOR) * 3800);
+		usdc_ = usdc_ / 1e20;
 		return usdc_;
-}
+}*/
       
 
    /*@notice funcion para convercion de decimales
@@ -253,24 +274,27 @@ interface Ioracle {
    *@param uint256 toDecimals
    *@return uint256
    */
-   //function convertDecimals(uint256 amount, uint256 fromDecimals, uint256 toDecimals) internal pure returns (uint256) {
-   //uint256 result = (amount * 10 ** toDecimals) / (10 ** fromDecimals);
-   //return result;
-   // }
+    function convertDecimals(uint256 amount, uint256 fromDecimals, uint256 toDecimals) internal pure returns (uint256) {
+    uint256 result = (amount * 10 ** toDecimals) / (10 ** fromDecimals);
+    return result;
+     }
 
 
-  /**@notice funcion para regular el bankCap convirtiendo eth a usdc
+  /*@notice funcion para regular el bankCap convirtiendo eth a usdc
    * @dev funcion para regular el bankCap convirtiendo eth a usdc
    * @return  uint256
-   /*
-   function converBankCap() private   returns (uint256) {
-	uint256 ConverCap = ((i_bankCap /100)*80);
-	  	   if(getMyBalance()>= ConverCap){
-		uint256	ConverCap2 = ((ConverCap / 100) * 10);
-			s_bankCapUsdc = convertEthToUsdc(ConverCap2);
-            USDC.Transfer(from, to, value);
- 
-		   }
-		
-		}*/
+   */
+   function converBankCap() public onlyRole(DEFAULT_ADMIN_ROLE) returns (uint256) {
+    uint256 eightyPercentCap = (i_bankCap * 80) / 100;
+    uint256 ethToConvert = eightyPercentCap;
+    uint256 usdcAmount = convertEthWToUsdc(ethToConvert);
+
+    // Transferir ETH a USDC (requiere aprobación y lógica de swap)
+    // Ejemplo: Usar un exchange como Uniswap o Curve
+    // USDC.transfer(address(exchange), ethToConvert);
+    // ... lógica de swap ...
+
+    s_bankCapUsdc = usdcAmount;
+    return usdcAmount;
+}
 	}
