@@ -6,7 +6,7 @@ import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {AggregatorV3Interface} from "@chainlink/contracts/src/v0.8/shared/interfaces/AggregatorV3Interface.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/security/ReentrancyGuard.sol";
-
+//import { UniversalRouter } from "@uniswap/universal-router/contracts/UniversalRouter.sol";
 
 
 
@@ -44,7 +44,7 @@ import {ReentrancyGuard} from "@openzeppelin/contracts/security/ReentrancyGuard.
 	
 	//variable que almacena el precio de la moneda 
 	//IOracle public oracle;
-    //s_feeds = AggregatorV3Interface(_feed); //address  _feed 
+     //s_feeds = AggregatorV3Interface(_feed); //address  _feed 
 	///@notice variable constante para almacenar el latido (heartbeat) del Data Feed
     uint16 constant ORACLE_HEARTBEAT = 3600;
     
@@ -114,12 +114,12 @@ import {ReentrancyGuard} from "@openzeppelin/contracts/security/ReentrancyGuard.
 	* @param _feed address de oraculo chainlink eth
     * @dev i_extMax se fija en 10 ETH (10*10^18 wei) como máximo por extracción.
     */
-	constructor(uint256 _limite, IERC20 _usdc,  address  _feed )	{
+	constructor(uint256 _limite, IERC20 _usdc,  address payable  _feed )	{
 		i_owner = msg.sender;
 		_grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
 		i_bankCap = _limite;
 		i_extMax = 10*10e18;
-		USDC = _usdc; 
+		//USDC = _usdc; 
 		s_feeds =  AggregatorV3Interface(_feed); 
 		
 		
@@ -209,26 +209,12 @@ import {ReentrancyGuard} from "@openzeppelin/contracts/security/ReentrancyGuard.
    function getMyBalance() public view onlyRole(MY_ROLE)returns (uint256) {
         return address(this).balance;
    }
-    /**
- * @notice Convierte un amount de ETH a USDC usando el precio de Chainlink.
- * @param _ethAmount Cantidad de ETH (en wei, 18 decimales).
- * @return Amount en USDC (6 decimales).
- */
-function convertEthWToUsdc(uint256 _ethAmount) public view  returns (uint256) {
-    uint256 ethUSDPrice = 380000000000;  //chainlinkFeed(); 380000000000 HArcode porque chainlink no funka// Precio en 8 decimales (ej: 2000 * 1e8) ;
-    // Fórmula: (ETH * precio) / 10^(18 + 8 - 6) = (ETH * precio) / 1e20
-    //s_cuentas[msg.sender].totalUsd += convertEthWToUsdc(msg.value);
-	uint256 usdcAmount = (_ethAmount * ethUSDPrice) / 1e20;
-	return usdcAmount;
-	
-	
-}
- /**
+   /**
  * @notice Función para consultar el precio en USD del ETH usando Chainlink.
  * @return ethUSDPrice_ Precio de ETH en USD (con 8 decimales, como Chainlink).
  * @dev Reverte si el precio es 0 (oráculo comprometido) o está desactualizado.
  */
-function chainlinkFeed() internal view returns (uint256 ethUSDPrice_) {
+function chainlinkFeed() public view returns (uint256) {
     (, int256 ethUSDPrice, , uint256 updatedAt, ) = s_feeds.latestRoundData();
 
     // Validaciones críticas
@@ -236,9 +222,24 @@ function chainlinkFeed() internal view returns (uint256 ethUSDPrice_) {
     if (block.timestamp - updatedAt > ORACLE_HEARTBEAT) revert KipuBank_StalePrice();  // Datos antiguos
 
     // Convierte de int256 a uint256 (seguro porque ya validamos que ethUSDPrice > 0)
-     return ethUSDPrice_ = uint256(ethUSDPrice);
+     return uint256(ethUSDPrice);
 } 
 
+    /**
+ * @notice Convierte un amount de ETH a USDC usando el precio de Chainlink.
+ * @param _ethAmount Cantidad de ETH (en wei, 18 decimales).
+ * @return Amount en USDC (6 decimales).
+ */
+function convertEthWToUsdc(uint256 _ethAmount) public view  returns (uint256) {
+    uint256 ethUSDPrice = chainlinkFeed(); //; 380000000000 HArcode porque chainlink no funka// Precio en 8 decimales (ej: 2000 * 1e8) 380000000000;
+    // Fórmula: (ETH * precio) / 10^(18 + 8 - 6) = (ETH * precio) / 1e20
+    //s_cuentas[msg.sender].totalUsd += convertEthWToUsdc(msg.value);
+	uint256 usdcAmount = (_ethAmount * ethUSDPrice) / 1e20;
+	return usdcAmount;
+	
+	
+}
+ 
     /*
      * @notice función para consultar el precio en USD del ETH 
      * @return ethUSDPrice_ el precio provisto por el oráculo.
