@@ -231,7 +231,7 @@ function chainlinkFeed() public view returns (uint256) {
  * @return Amount en USDC (6 decimales).
  */
 function convertEthWToUsdc(uint256 _ethAmount) public view  returns (uint256) {
-    uint256 ethUSDPrice = chainlinkFeed(); //; 380000000000 HArcode porque chainlink no funka// Precio en 8 decimales (ej: 2000 * 1e8) 380000000000;
+    uint256 ethUSDPrice = chainlinkFeed(); // Precio en 8 decimales (ej: 2000 * 1e8) 
     // Fórmula: (ETH * precio) / 10^(18 + 8 - 6) = (ETH * precio) / 1e20
     //s_cuentas[msg.sender].totalUsd += convertEthWToUsdc(msg.value);
 	uint256 usdcAmount = (_ethAmount * ethUSDPrice) / 1e20;
