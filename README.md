@@ -18,7 +18,7 @@ SO windows, MacOS o Linux, Browsers Explorer, Chrome v.xxx, Firefox V.xxx o post
 # Pasos de la descarga:
 Instalción a traves de dispositivos extraibles..,
 Clona el repositorio: git clone <https://github.com/Raul19AG/KipuBankV2>
-# Deployed in https://sepolia.etherscan.io/address/0xe2D148169f423C403642861c4A1F0099DE79F93E
+# Deployed in https://sepolia.etherscan.io/address/0xbba1ea8a2f182e0e7aa71a270f779cf46829c02d
 ## Guía del usuario
 
 # Cómo empezar:
