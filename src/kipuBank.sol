@@ -119,7 +119,7 @@ import {ReentrancyGuard} from "@openzeppelin/contracts/security/ReentrancyGuard.
 		_grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
 		i_bankCap = _limite;
 		i_extMax = 10*10e18;
-		//USDC = _usdc; 
+		USDC = _usdc; 
 		s_feeds =  AggregatorV3Interface(_feed); 
 		
 		
